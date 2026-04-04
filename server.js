@@ -17,6 +17,10 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
+app.get("/", (req, res) => {
+    res.send("SN AI Server is running 🚀");
+  });
+
 const auth = {
   username: process.env.SN_USER,
   password: process.env.SN_PASS
