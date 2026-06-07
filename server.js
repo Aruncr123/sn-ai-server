@@ -10,6 +10,9 @@ app.use(express.json());
 
 app.use((req, res, next) => {
 
+  console.log("Path:", req.path);
+  console.log("API Key:", req.headers["x-api-key"]);
+
   if (req.path === "/" || req.path === "/openapi.json") {
       return next();
   }
