@@ -7,6 +7,28 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+
+app.use((req, res, next) => {
+
+  if (req.path === "/" || req.path === "/openapi.json") {
+      return next();
+  }
+
+  const apiKey = req.headers["x-api-key"];
+
+  if (apiKey !== process.env.API_KEY) {
+
+      return res.status(401).json({
+          success: false,
+          message: "Unauthorized"
+      });
+
+  }
+
+  next();
+
+});
+
 const PORT = process.env.PORT || 3000;
 
 const auth = {
