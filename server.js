@@ -662,6 +662,382 @@ app.get("/ci-risk/:name", async (req, res) => {
   }
 });
 
+/**
+ * Incident Resolution Advisor
+ *
+ * Returns historical resolutions from similar incidents
+ */
+app.get("/incident-resolution/:number", async (req, res) => {
+
+  try {
+
+      const number = req.params.number;
+
+      /*
+       * Get Current Incident
+       */
+      const incidentRes = await snGet(
+          `${instance}/api/now/table/incident?sysparm_query=number=${number}&sysparm_limit=1`
+      );
+
+      if (!incidentRes.data.result.length) {
+
+          return res.status(404).json({
+              success: false,
+              message: "Incident not found"
+          });
+
+      }
+
+      const incident =
+          incidentRes.data.result[0];
+
+      const shortDescription =
+          incident.short_description || "";
+
+      const description =
+          incident.description || "";
+
+      const category =
+          incident.category || "";
+
+      const subcategory =
+          incident.subcategory || "";
+
+      /*
+       * Build Similar Incident Query
+       */
+      let query = "";
+
+      if (category && subcategory) {
+
+          query =
+              `category=${category}` +
+              `^subcategory=${subcategory}`;
+
+      } else {
+
+          const stopWords = [
+              "issue",
+              "issues",
+              "working",
+              "unable",
+              "cannot",
+              "cant",
+              "problem",
+              "error",
+              "failed",
+              "failure",
+              "access",
+              "user",
+              "request",
+              "server",
+              "application",
+              "system",
+              "please",
+              "need",
+              "not"
+          ];
+
+          const words = shortDescription
+              .toLowerCase()
+              .split(/\s+/)
+              .filter(function(word) {
+
+                  return word.length > 2 &&
+                      stopWords.indexOf(word) === -1;
+
+              })
+              .slice(0, 3);
+
+          query = words
+              .map(function(word) {
+
+                  return (
+                      `short_descriptionLIKE${word}` +
+                      `^ORdescriptionLIKE${word}`
+                  );
+
+              })
+              .join("^OR");
+      }
+
+      const encodedQuery =
+          `${query}` +
+          `^state=7` +
+          `^close_codeINSolved (Work Around),Solved (Permanently),Solved Remotely (Work Around),Solved Remotely (Permanently)` +
+          `^closed_atRELATIVEGE@month@ago@3`;
+
+      /*
+       * Get Similar Closed Incidents
+       */
+      const similarRes = await snGet(
+          `${instance}/api/now/table/incident` +
+          `?sysparm_query=${encodeURIComponent(encodedQuery)}` +
+          `&sysparm_fields=number,short_description,description,close_notes,close_code,category,subcategory` +
+          `&sysparm_limit=20`
+      );
+
+      const incidents =
+          similarRes.data.result || [];
+
+      /*
+       * Clean Resolution Notes
+       */
+      function cleanResolution(note) {
+
+          if (!note) {
+
+              return "";
+
+          }
+
+          note = note.replace(/^VR\s*/gi, "");
+
+          note = note.replace(
+              /https?:\/\/\S+/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Hi\s+\w+,?/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Hello\s+\w+,?/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Thanks for reaching out[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Best Regards[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Regards[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Assigned To:[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Please fill out our short survey[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /User confirmed to close the ticket\.?/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Vendor Integration Job Runner[\s\S]*?resolution:/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Was the remote access taken[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Tools used for issue resolution[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /KB\/SOP number if available[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Was issue resolved completely or partially[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Was user confirmation taken[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(
+              /Is screenshot attached[\s\S]*/gi,
+              ""
+          );
+
+          note = note.replace(/\n+/g, " ");
+          note = note.replace(/\s+/g, " ");
+
+          return note.trim();
+
+      }
+
+      /*
+       * Historical Resolutions
+       */
+      const historicalResolutions = incidents
+          .map(function(inc) {
+
+              return {
+
+                  incidentNumber:
+                      inc.number,
+
+                  shortDescription:
+                      inc.short_description,
+
+                  category:
+                      inc.category,
+
+                  subcategory:
+                      inc.subcategory,
+
+                  closeCode:
+                      inc.close_code,
+
+                  resolution:
+                      cleanResolution(
+                          inc.close_notes
+                      )
+
+              };
+
+          })
+          .filter(function(item) {
+
+              if (!item.resolution) {
+
+                  return false;
+
+              }
+
+              const resolution =
+                  item.resolution.toLowerCase();
+
+              if (resolution.length < 30) {
+
+                  return false;
+
+              }
+
+              const ignorePatterns = [
+                  "closing this ticket",
+                  "user asked me",
+                  "issue no longer persistent",
+                  "reopen your ticket",
+                  "please fill out our short survey",
+                  "thank you and have a nice day",
+                  "user confirmed to close",
+                  "we are closing this ticket",
+                  "duplicate ticket",
+                  "resolved this ticket",
+                  "happy to help"
+              ];
+
+              return !ignorePatterns.some(function(pattern) {
+
+                  return resolution.indexOf(pattern) > -1;
+
+              });
+
+          });
+
+      /*
+       * Remove Duplicate Resolutions
+       */
+      const uniqueResolutions = [];
+
+      const seen = {};
+
+      historicalResolutions.forEach(function(item) {
+
+          const key =
+              item.resolution.toLowerCase();
+
+          if (!seen[key]) {
+
+              seen[key] = true;
+
+              uniqueResolutions.push(item);
+
+          }
+
+      });
+
+      /*
+       * Response
+       */
+      res.json({
+
+          success: true,
+
+          incidentNumber:
+              number,
+
+          currentIncident: {
+
+              shortDescription:
+                  shortDescription,
+
+              description:
+                  description,
+
+              category:
+                  category,
+
+              subcategory:
+                  subcategory
+
+          },
+
+          searchCriteria: {
+
+              category:
+                  category,
+
+              subcategory:
+                  subcategory,
+
+              queryUsed:
+                  query
+
+          },
+
+          similarIncidentCount:
+              uniqueResolutions.length,
+
+          historicalResolutions:
+              uniqueResolutions,
+
+          aiInstruction:
+              "Analyze the historical resolutions and identify common troubleshooting patterns, probable root cause, recommended resolution steps, confidence level, and a concise resolution summary."
+
+      });
+
+  } catch (error) {
+
+      console.error(error);
+
+      res.status(500).json({
+
+          success: false,
+          error: error.message
+
+      });
+
+  }
+
+});
+
 app.listen(PORT, () => {
 
     console.log(`🚀 Server running on port ${PORT}`);
