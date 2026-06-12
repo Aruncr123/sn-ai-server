@@ -321,6 +321,40 @@ app.post("/create-incident", async (req, res) => {
 
 });
 
+//CMDB Health Assessment
+app.get("/cmdb-health", async (req, res) => {
+
+  try {
+
+      const noOwner = await snGet(
+          `${instance}/api/now/table/cmdb_ci?sysparm_query=owned_byISEMPTY`
+      );
+
+      const noSupportGroup = await snGet(
+          `${instance}/api/now/table/cmdb_ci?sysparm_query=support_groupISEMPTY`
+      );
+
+      const staleCIs = await snGet(
+          `${instance}/api/now/table/cmdb_ci?sysparm_query=sys_updated_onRELATIVELT@dayofweek@ago@90`
+      );
+
+      res.json({
+          missingOwners: noOwner.data.result.length,
+          missingSupportGroups: noSupportGroup.data.result.length,
+          staleCIs: staleCIs.data.result.length
+      });
+
+  } catch (error) {
+
+      console.log(error.response?.data || error.message);
+
+      res.status(500).json({
+          error: error.message
+      });
+  }
+
+});
+
 /**
  * Create Change Request
  */
@@ -479,6 +513,153 @@ app.get("/similar-incidents/:number", async (req, res) => {
 
     }
 
+});
+
+/**
+ * Ownership Risk Assessment
+ */
+app.get("/ci-risk/:name", async (req, res) => {
+
+  try {
+
+      const ciName = req.params.name;
+
+      const ciRes = await snGet(
+          `${instance}/api/now/table/cmdb_ci?name=${encodeURIComponent(ciName)}&sysparm_limit=1`
+      );
+
+      if (!ciRes.data.result.length) {
+
+          return res.status(404).json({
+              success: false,
+              message: "CI not found"
+          });
+      }
+
+      const ci = ciRes.data.result[0];
+
+      var riskScore = 0;
+      var findings = [];
+      var recommendations = [];
+
+      /*
+       * Business Owner
+       */
+      if (!ci.owned_by || !ci.owned_by.value) {
+
+          riskScore += 3;
+
+          findings.push(
+              "Business Owner is missing"
+          );
+
+          recommendations.push(
+              "Assign a Business Owner"
+          );
+      }
+
+      /*
+       * Support Group
+       */
+      if (!ci.support_group || !ci.support_group.value) {
+
+          riskScore += 3;
+
+          findings.push(
+              "Support Group is missing"
+          );
+
+          recommendations.push(
+              "Assign a Support Group"
+          );
+      }
+
+      /*
+       * Assignment Group
+       */
+      if (!ci.assignment_group || !ci.assignment_group.value) {
+
+          riskScore += 2;
+
+          findings.push(
+              "Assignment Group is missing"
+          );
+
+          recommendations.push(
+              "Assign an Assignment Group"
+          );
+      }
+
+      /*
+       * Managed By
+       */
+      if (!ci.managed_by || !ci.managed_by.value) {
+
+          riskScore += 2;
+
+          findings.push(
+              "Managed By is missing"
+          );
+
+          recommendations.push(
+              "Assign a CI Manager"
+          );
+      }
+
+      /*
+       * Operational Status
+       */
+      if (!ci.operational_status) {
+
+          riskScore += 1;
+
+          findings.push(
+              "Operational Status is missing"
+          );
+
+          recommendations.push(
+              "Update Operational Status"
+          );
+      }
+
+      /*
+       * Determine Risk Level
+       */
+      var riskLevel = "Low";
+
+      if (riskScore >= 8) {
+
+          riskLevel = "High";
+
+      } else if (riskScore >= 4) {
+
+          riskLevel = "Medium";
+      }
+
+      res.json({
+
+          success: true,
+
+          ciName: ci.name,
+
+          riskScore: riskScore,
+
+          riskLevel: riskLevel,
+
+          findings: findings,
+
+          recommendations: recommendations
+      });
+
+  } catch (error) {
+
+      console.log(error.response?.data || error.message);
+
+      res.status(500).json({
+          success: false,
+          error: error.message
+      });
+  }
 });
 
 app.listen(PORT, () => {
