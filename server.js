@@ -1038,6 +1038,109 @@ app.get("/incident-resolution/:number", async (req, res) => {
 
 });
 
+
+/**
+ * Resolve Incident
+ */
+app.post("/resolve-incident", async (req, res) => {
+
+  try {
+
+      const {
+          incidentNumber,
+          closeNotes,
+          closeCode
+      } = req.body;
+
+      /*
+       * Get Incident
+       */
+      const incidentRes = await snGet(
+          `${instance}/api/now/table/incident?number=${incidentNumber}&sysparm_limit=1`
+      );
+
+      if (!incidentRes.data.result.length) {
+
+          return res.status(404).json({
+              success: false,
+              message: "Incident not found"
+          });
+
+      }
+
+      const incident =
+          incidentRes.data.result[0];
+
+      const sysId =
+          incident.sys_id;
+
+      /*
+       * Resolve Incident
+       */
+      const payload = {
+
+          state: 6,
+
+          close_code:
+              closeCode || "Solution provided",
+
+          close_notes:
+              closeNotes ||
+              "Resolved through MCP AI Assistant."
+
+      };
+
+      await axios.patch(
+          `${instance}/api/now/table/incident/${sysId}`,
+          payload,
+          {
+              auth,
+              headers: {
+                  "Content-Type": "application/json",
+                  "Accept": "application/json"
+              }
+          }
+      );
+
+      res.json({
+
+          success: true,
+
+          incidentNumber:
+              incidentNumber,
+
+          state:
+              "Resolved",
+
+          closeCode:
+              payload.close_code,
+
+          closeNotes:
+              payload.close_notes,
+
+          message:
+              "Incident resolved successfully"
+
+      });
+
+  } catch (error) {
+
+      res.status(500).json({
+
+          success: false,
+
+          error:
+              error.message,
+
+          serviceNowError:
+              error.response?.data || null
+
+      });
+
+  }
+
+});
+
 app.listen(PORT, () => {
 
     console.log(`🚀 Server running on port ${PORT}`);
