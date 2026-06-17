@@ -1141,6 +1141,57 @@ app.post("/resolve-incident", async (req, res) => {
 
 });
 
+/**
+ * Notify CI Owner
+ *
+ * Sends risk summary email to CI owner
+ */
+app.post("/notify-ci-owner", async (req, res) => {
+
+  try {
+
+      const {
+          owner,
+          emailBody
+      } = req.body;
+
+      if (!owner) {
+
+          return res.status(400).json({
+              success: false,
+              message: "owner is required"
+          });
+
+      }
+
+      const response = await snPost(
+          `${instance}/api/882278/mcp_user_management/notifyCiOwners`,
+          {
+              owner: owner,
+              emailBody: emailBody
+          }
+      );
+
+      res.json(response.data.result);
+
+  } catch (error) {
+
+      res.status(500).json({
+
+          success: false,
+
+          error:
+              error.message,
+
+          serviceNowError:
+              error.response?.data || null
+
+      });
+
+  }
+
+});
+
 app.listen(PORT, () => {
 
     console.log(`🚀 Server running on port ${PORT}`);
