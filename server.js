@@ -1144,26 +1144,77 @@ app.post("/resolve-incident", async (req, res) => {
 /**
  * Notify CI Owner
  *
- * Sends risk summary email to CI owner
+ * Looks up CI owner automatically
+ * and sends risk assessment summary
  */
 app.post("/notify-ci-owner", async (req, res) => {
 
   try {
 
       const {
-          owner,
+          ciName,
           emailBody
       } = req.body;
+
+      if (!ciName) {
+
+          return res.status(400).json({
+              success: false,
+              message: "ciName is required"
+          });
+
+      }
+
+      /*
+       * Get CI
+       */
+      const ciRes = await snGet(
+          `${instance}/api/now/table/cmdb_ci?name=${encodeURIComponent(ciName)}&sysparm_limit=1`
+      );
+
+      if (!ciRes.data.result.length) {
+
+          return res.status(404).json({
+              success: false,
+              message: "CI not found"
+          });
+
+      }
+
+      const ci =
+          ciRes.data.result[0];
+
+      if (!ci.owned_by || !ci.owned_by.value) {
+
+          return res.status(400).json({
+              success: false,
+              message: "CI owner not assigned"
+          });
+
+      }
+
+      /*
+       * Get Owner Username
+       */
+      const ownerRes = await snGet(
+          `${instance}/api/now/table/sys_user/${ci.owned_by.value}`
+      );
+
+      const owner =
+          ownerRes.data.result.user_name;
 
       if (!owner) {
 
           return res.status(400).json({
               success: false,
-              message: "owner is required"
+              message: "Owner username not found"
           });
 
       }
 
+      /*
+       * Send Notification
+       */
       const response = await snPost(
           `${instance}/api/882278/mcp_user_management/notifyCiOwners`,
           {
@@ -1172,7 +1223,23 @@ app.post("/notify-ci-owner", async (req, res) => {
           }
       );
 
-      res.json(response.data.result);
+      res.json({
+
+          success: true,
+
+          ciName:
+              ciName,
+
+          owner:
+              owner,
+
+          message:
+              "Notification queued successfully",
+
+          serviceNowResponse:
+              response.data.result
+
+      });
 
   } catch (error) {
 
