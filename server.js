@@ -1268,6 +1268,19 @@ app.post("/create-decommission-change", async (req, res) => {
 
   try {
 
+      console.log("=================================");
+      console.log("CREATE DECOMMISSION CHANGE");
+      console.log("=================================");
+
+      console.log("Incoming Request:");
+      console.log(
+          JSON.stringify(
+              req.body,
+              null,
+              2
+          )
+      );
+
       const {
           ciName,
           region,
@@ -1279,6 +1292,21 @@ app.post("/create-decommission-change", async (req, res) => {
           backupRequired,
           justification
       } = req.body;
+
+      /*
+       * Handle GPT Boolean Values
+       */
+      const sharedServer =
+          isSharedServer === true ||
+          isSharedServer === "true";
+
+      const sapServer =
+          isSAPServer === true ||
+          isSAPServer === "true";
+
+      const backup =
+          backupRequired === true ||
+          backupRequired === "true";
 
       /*
        * Validate Required Fields
@@ -1301,35 +1329,121 @@ app.post("/create-decommission-change", async (req, res) => {
       }
 
       /*
-       * Call ServiceNow Scripted REST API
+       * Payload To ServiceNow
+       */
+      const payload = {
+
+          ciName:
+              ciName,
+
+          region:
+              region,
+
+          startDate:
+              startDate,
+
+          endDate:
+              endDate,
+
+          isSharedServer:
+              sharedServer,
+
+          isSAPServer:
+              sapServer,
+
+          shutdownType:
+              shutdownType,
+
+          backupRequired:
+              backup,
+
+          justification:
+              justification
+
+      };
+
+      console.log("Payload Sent To ServiceNow:");
+      console.log(
+          JSON.stringify(
+              payload,
+              null,
+              2
+          )
+      );
+
+      /*
+       * Call Scripted REST API
        */
       const response = await snPost(
           `${instance}/api/882278/mcp_user_management/createDecomissionChangeRequest`,
-          {
-              ciName: ciName,
-              region: region,
-              startDate: startDate,
-              endDate: endDate,
-              isSharedServer: isSharedServer,
-              isSAPServer: isSAPServer,
-              shutdownType: shutdownType,
-              backupRequired: backupRequired,
-              justification: justification
-          }
+          payload
+      );
+
+      console.log("ServiceNow Response:");
+      console.log(
+          JSON.stringify(
+              response.data,
+              null,
+              2
+          )
       );
 
       res.json({
+
           success: true,
-          result: response.data.result || response.data
+
+          request: payload,
+
+          result:
+              response.data.result ||
+              response.data
+
       });
 
   } catch (error) {
 
+      console.log("=================================");
+      console.log("CREATE DECOMMISSION CHANGE ERROR");
+      console.log("=================================");
+
+      console.log("Message:");
+      console.log(error.message);
+
+      console.log("Code:");
+      console.log(error.code);
+
+      if (error.response) {
+
+          console.log("Status:");
+          console.log(error.response.status);
+
+          console.log("Response:");
+          console.log(
+              JSON.stringify(
+                  error.response.data,
+                  null,
+                  2
+              )
+          );
+
+      }
+
       res.status(500).json({
+
           success: false,
-          error: error.message,
+
+          error:
+              error.message,
+
+          code:
+              error.code,
+
+          requestBody:
+              req.body,
+
           serviceNowError:
               error.response?.data || null
+
       });
 
   }
