@@ -1259,6 +1259,83 @@ app.post("/notify-ci-owner", async (req, res) => {
 
 });
 
+/**
+ * Create Server Decommission Change
+ *
+ * Uses ServiceNow Scripted REST API
+ */
+app.post("/create-decommission-change", async (req, res) => {
+
+  try {
+
+      const {
+          ciName,
+          region,
+          startDate,
+          endDate,
+          isSharedServer,
+          isSAPServer,
+          shutdownType,
+          backupRequired,
+          justification
+      } = req.body;
+
+      /*
+       * Validate Required Fields
+       */
+      if (
+          !ciName ||
+          !region ||
+          !startDate ||
+          !endDate ||
+          !shutdownType ||
+          !justification
+      ) {
+
+          return res.status(400).json({
+              success: false,
+              message:
+                  "ciName, region, startDate, endDate, shutdownType and justification are required"
+          });
+
+      }
+
+      /*
+       * Call ServiceNow Scripted REST API
+       */
+      const response = await snPost(
+          `${instance}/api/882278/mcp_user_management/createDecomissionChangeRequest`,
+          {
+              ciName: ciName,
+              region: region,
+              startDate: startDate,
+              endDate: endDate,
+              isSharedServer: isSharedServer,
+              isSAPServer: isSAPServer,
+              shutdownType: shutdownType,
+              backupRequired: backupRequired,
+              justification: justification
+          }
+      );
+
+      res.json({
+          success: true,
+          result: response.data.result || response.data
+      });
+
+  } catch (error) {
+
+      res.status(500).json({
+          success: false,
+          error: error.message,
+          serviceNowError:
+              error.response?.data || null
+      });
+
+  }
+
+});
+
 app.listen(PORT, () => {
 
     console.log(`🚀 Server running on port ${PORT}`);
