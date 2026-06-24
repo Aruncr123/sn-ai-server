@@ -1,11 +1,11 @@
-const express = require("express");
-const axios = require("axios");
-const dotenv = require("dotenv");
+const express = require("express");  //Express → Used to create API server
+const axios = require("axios");  //Axios → Used to call ServiceNow APIs
+const dotenv = require("dotenv");  //dotenv → Reads environment variables from .env
 
 dotenv.config();
 
 const app = express();
-app.use(express.json());
+app.use(express.json());//Allows reading JSON request body
 
 
 app.use((req, res, next) => {
